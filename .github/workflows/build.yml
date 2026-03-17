@@ -1,31 +1,59 @@
-      - name: Build Swift Package for iOS simulator
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Print Xcode / Swift diagnostics
         run: |
-          # Ensure we use the iOS Simulator SDK from Xcode
+          set -e
+          echo "=== xcode-select ==="
+          xcode-select --print-path || true
+          echo "=== xcodebuild version ==="
+          xcodebuild -version || true
+          echo "=== swift version (PATH) ==="
+          which swift || true
+          swift --version || true
+          echo "=== xcrun SDK info ==="
+          xcrun --sdk iphonesimulator --show-sdk-path || true
+          echo "=== xcrun find swift ==="
+          xcrun --sdk iphonesimulator --find swift || true
+          echo "=== list simulator swift libs ==="
+          ls -la "$(xcrun --sdk iphonesimulator --show-sdk-path)/usr/lib/swift" || true
+
+      - name: Build Swift Package for iOS simulator (via xcrun)
+        run: |
+          set -euo pipefail
           SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
           echo "Using SDKROOT=$SDKROOT"
-          export SDKROOT
-
-          # Optional: select a specific Xcode if required on the runner
-          # Adjust path if you need a different Xcode version (or remove if unnecessary)
-          if [ -d "/Applications/Xcode_15.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_15.0.app/Contents/Developer || true
-          fi
-
-          # Build the Swift package for the simulator triple
-          swift build -c release --triple arm64-apple-ios17.0-simulator
+          XRUN_SWIFT=$(xcrun --sdk iphonesimulator --find swift)
+          echo "Using swift from: $XRUN_SWIFT"
+          # Run build via xcrun so that the iOS simulator SDK is used
+          "$XRUN_SWIFT" build -c release --triple arm64-apple-ios17.0-simulator || {
+            echo "=== BUILD FAILED: showing env and .build contents ==="
+            env | grep -E 'DEVELOPER_DIR|SDKROOT|PATH' || true
+            ls -R .build || true
+            exit 1
+          }
 
       - name: Create Fake IPA for Testing (simulator)
         run: |
-          # Locate the simulator release binary produced by `swift build`
+          set -e
           BUILD_ROOT=$(find .build -type d -name "arm64-apple-ios17.0-simulator" -print -quit)/release
           BINARY="$BUILD_ROOT/Vitalis"
+          echo "Looking for binary at: $BINARY"
           if [ ! -f "$BINARY" ]; then
-            echo "Binary not found at $BINARY"
+            echo "Binary not found!"
             ls -R .build
             exit 1
           fi
-
-          # Create minimal .app bundle and package as an .ipa (for CI/test artifacts only)
           rm -rf Payload
           mkdir -p Payload/Vitalis.app
           cat > Payload/Vitalis.app/Info.plist <<EOF
@@ -39,8 +67,6 @@
             <key>CFBundleShortVersionString</key><string>1.0</string>
           </dict></plist>
           EOF
-
           cp "$BINARY" Payload/Vitalis.app/Vitalis
           chmod +x Payload/Vitalis.app/Vitalis
           zip -r Vitalis.ipa Payload
-
