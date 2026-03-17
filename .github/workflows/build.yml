@@ -1,31 +1,10 @@
-name: Build iOS IPA (2026 Update)
-on: [push]
-
-jobs:
-  build:
-    runs-on: macos-15 # Používáme nejnovější macOS runner
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4 # Aktualizováno na v4
-
-      - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
-
-      - name: Build App (Archive)
+      - name: Build Swift Package
         run: |
-          # Nahraďte 'VaseAplikace' názvem svého .xcodeproj souboru
-          xcodebuild archive -scheme VaseAplikace -archivePath build/VaseAplikace.xcarchive -sdk iphoneos -allowProvisioningUpdates
-
-      - name: Create Unsigned IPA
+          swift build -c release --triple arm64-apple-ios17.0-simulator
+          
+      - name: Create Fake IPA for Testing
         run: |
-          mkdir Payload
-          cp -r build/VaseAplikace.xcarchive/Products/Applications/*.app Payload/
-          zip -r VaseAplikace.ipa Payload
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4 # KLÍČOVÁ ZMĚNA: Musí být v4
-        with:
-          name: ios-app-bundle
-          path: VaseAplikace.ipa
+          mkdir -p Payload
+          # Najde zkompilovanou binárku a zkopíruje ji
+          find .build -name "Vitalis" -type f -exec cp {} Payload/VitalisApp \;
+          zip -r Vitalis.ipa Payload
