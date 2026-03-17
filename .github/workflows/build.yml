@@ -1,10 +1,70 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Build Swift Package
         run: |
           swift build -c release --triple arm64-apple-ios17.0-simulator
-          
-      - name: Create Fake IPA for Testing
+
+      - name: Create IPA
         run: |
-          mkdir -p Payload
-          # Najde zkompilovanou binárku a zkopíruje ji
-          find .build -name "Vitalis" -type f -exec cp {} Payload/VitalisApp \;
+          mkdir -p Payload/Vitalis.app
+
+          # Copy the compiled binary into the app bundle
+          BINARY=$(find .build -name "Vitalis" -type f | head -1)
+          if [ -z "$BINARY" ]; then echo "Error: compiled binary not found"; exit 1; fi
+          cp "$BINARY" Payload/Vitalis.app/Vitalis
+
+          # Generate a minimal Info.plist so the bundle is valid
+          cat > Payload/Vitalis.app/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleIdentifier</key>
+              <string>com.danzo.vitalis</string>
+              <key>CFBundleName</key>
+              <string>Vitalis</string>
+              <key>CFBundleDisplayName</key>
+              <string>Vitalis</string>
+              <key>CFBundleExecutable</key>
+              <string>Vitalis</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>MinimumOSVersion</key>
+              <string>17.0</string>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array>
+                  <string>arm64</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          # Package into an unsigned .ipa
           zip -r Vitalis.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vitalis-unsigned
+          path: Vitalis.ipa
+

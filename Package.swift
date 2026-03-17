@@ -4,17 +4,17 @@ import PackageDescription
 let package = Package(
     name: "Vitalis",
     platforms: [
-        .iOS(.v17) // Nastav verzi iOS, pro kterou vyvíjíš
+        .iOS(.v17)
     ],
     products: [
-        .library(
+        .executable(
             name: "Vitalis",
             targets: ["Vitalis"]),
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "Vitalis",
-            path: ".", // Říká Swiftu, že soubory jsou v hlavní složce
+            path: ".",
             sources: [
                 "VitalisApp.swift",
                 "Views",
