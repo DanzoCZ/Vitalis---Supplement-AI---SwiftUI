@@ -1,10 +1,72 @@
-      - name: Build Swift Package
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Print Xcode / Swift diagnostics
         run: |
-          swift build -c release --triple arm64-apple-ios17.0-simulator
-          
-      - name: Create Fake IPA for Testing
+          set -e
+          echo "=== xcode-select ==="
+          xcode-select --print-path || true
+          echo "=== xcodebuild version ==="
+          xcodebuild -version || true
+          echo "=== swift version (PATH) ==="
+          which swift || true
+          swift --version || true
+          echo "=== xcrun SDK info ==="
+          xcrun --sdk iphonesimulator --show-sdk-path || true
+          echo "=== xcrun find swift ==="
+          xcrun --sdk iphonesimulator --find swift || true
+          echo "=== list simulator swift libs ==="
+          ls -la "$(xcrun --sdk iphonesimulator --show-sdk-path)/usr/lib/swift" || true
+
+      - name: Build Swift Package for iOS simulator (via xcrun)
         run: |
-          mkdir -p Payload
-          # Najde zkompilovanou binárku a zkopíruje ji
-          find .build -name "Vitalis" -type f -exec cp {} Payload/VitalisApp \;
+          set -euo pipefail
+          SDKROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
+          echo "Using SDKROOT=$SDKROOT"
+          XRUN_SWIFT=$(xcrun --sdk iphonesimulator --find swift)
+          echo "Using swift from: $XRUN_SWIFT"
+          # Run build via xcrun so that the iOS simulator SDK is used
+          "$XRUN_SWIFT" build -c release --triple arm64-apple-ios17.0-simulator || {
+            echo "=== BUILD FAILED: showing env and .build contents ==="
+            env | grep -E 'DEVELOPER_DIR|SDKROOT|PATH' || true
+            ls -R .build || true
+            exit 1
+          }
+
+      - name: Create Fake IPA for Testing (simulator)
+        run: |
+          set -e
+          BUILD_ROOT=$(find .build -type d -name "arm64-apple-ios17.0-simulator" -print -quit)/release
+          BINARY="$BUILD_ROOT/Vitalis"
+          echo "Looking for binary at: $BINARY"
+          if [ ! -f "$BINARY" ]; then
+            echo "Binary not found!"
+            ls -R .build
+            exit 1
+          fi
+          rm -rf Payload
+          mkdir -p Payload/Vitalis.app
+          cat > Payload/Vitalis.app/Info.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>Vitalis</string>
+            <key>CFBundleIdentifier</key><string>com.example.Vitalis</string>
+            <key>CFBundleName</key><string>Vitalis</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+          </dict></plist>
+          EOF
+          cp "$BINARY" Payload/Vitalis.app/Vitalis
+          chmod +x Payload/Vitalis.app/Vitalis
           zip -r Vitalis.ipa Payload
